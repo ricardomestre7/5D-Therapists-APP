@@ -156,69 +156,43 @@ function register_new_patient($patient_data) {
             "SELECT id FROM $table_name WHERE email = %s",
             $patient_data['email']
         ));
-        if ($existing) {
-            return ['error' => 'Email já cadastrado'];
+        function handle_patient_registration() {
+            if (!check_ajax_referer('patient_registration_nonce', 'nonce', false)) {
+                wp_send_json_error('Nonce inválido');
+            }
+        
+            $patient_data = [
+                'name' => sanitize_text_field($_POST['name']),
+                'email' => sanitize_email($_POST['email']),
+                'birth_date' => sanitize_text_field($_POST['birth_date']),
+                'phone' => sanitize_text_field($_POST['phone'])
+            ];
+        
+            $result = register_new_patient($patient_data);
+        
+            if (isset($result['error'])) {
+                wp_send_json_error($result['error']);
+            }
+        
+            wp_send_json_success($result);
         }
-    }
-    
-    $patient_data['patient_uuid'] = generate_patient_uuid();
-    
-    $result = $wpdb->insert($table_name, $patient_data);
-    
-    if ($result === false) {
-        return ['error' => 'Erro ao registrar paciente'];
-    }
-    
-    return [
-        'success' => true,
-        'patient_id' => $wpdb->insert_id,
-        'patient_uuid' => $patient_data['patient_uuid']
-    ];
-}
-
-add_shortcode('patient_registration', 'patient_registration_form_shortcode');
-
-// Handler AJAX para registro
-add_action('wp_ajax_register_patient', 'handle_patient_registration');
-add_action('wp_ajax_nopriv_register_patient', 'handle_patient_registration');
-
-function handle_patient_registration() {
-    if (!check_ajax_referer('patient_registration_nonce', 'nonce', false)) {
-        wp_send_json_error('Nonce inválido');
-    }
-    
-    $patient_data = [
-        'name' => sanitize_text_field($_POST['name']),
-        'email' => sanitize_email($_POST['email']),
-        'birth_date' => sanitize_text_field($_POST['birth_date']),
-        'phone' => sanitize_text_field($_POST['phone'])
-    ];
-    
-    $result = register_new_patient($patient_data);
-    
-    if (isset($result['error'])) {
-        wp_send_json_error($result['error']);
-    }
-    
-    wp_send_json_success($result);
-}
-
-// Função para salvar resultados de análise energética
-function save_quantum_analysis_result($patient_id, $analysis_result) {
-    global $wpdb;
-
-    $table_name = $wpdb->prefix . 'quantum_analysis';
-    $wpdb->insert(
-        $table_name,
-        [
-            'patient_id' => $patient_id,
-            'analysis_date' => current_time('mysql'),
-            'analysis_result' => $analysis_result,
-        ]
-    );
-}
-
-// Shortcode para Análise Energética Quântica
+        
+        // Função para salvar resultados de análise energética
+        function save_quantum_analysis_result($patient_id, $analysis_result) {
+            global $wpdb;
+        
+            $table_name = $wpdb->prefix . 'quantum_analysis';
+            $wpdb->insert(
+                $table_name,
+                [
+                    'patient_id' => $patient_id,
+                    'analysis_date' => current_time('mysql'),
+                    'analysis_result' => $analysis_result,
+                ]
+            );
+        }
+        
+ // Shortcode para Análise Energética Quântica
 function quantum_analysis_shortcode() {
     ob_start();
     ?>
@@ -226,10 +200,10 @@ function quantum_analysis_shortcode() {
         <h2>Iniciar Análise Energética Quântica</h2>
         <p>Realize a análise dos campos energéticos dos pacientes.</p>
         <input type="number" id="patient_id" placeholder="ID do Paciente" />
-        <button onclick="iniciarAnaliseEnergetica()">Iniciar Análise</button>
+        <button onclick="iniciarAnaliseEnergetica(this)">Iniciar Análise</button>
     </div>
     <script>
-        function iniciarAnaliseEnergetica() {
+        function iniciarAnaliseEnergetica(button) {
             const patientId = document.getElementById('patient_id').value;
             const nonce = '<?php echo wp_create_nonce("quantum_analysis_nonce"); ?>';
             
@@ -239,7 +213,6 @@ function quantum_analysis_shortcode() {
             }
 
             // Mostrar loading
-            const button = event.target;
             const originalText = button.innerHTML;
             button.disabled = true;
             button.innerHTML = 'Analisando...';
@@ -269,6 +242,10 @@ function quantum_analysis_shortcode() {
                 button.innerHTML = originalText;
             });
         }
+    </script>
+    <?php
+    return ob_get_clean();
+}
 
         function displayAnalysisResults(results) {
             const container = document.createElement('div');
@@ -294,6 +271,7 @@ function quantum_analysis_shortcode() {
     return ob_get_clean();
 	}
 add_shortcode('quantum_analysis', 'quantum_analysis_shortcode');
+<?php
 
 function enviarAnamnese() {
         alert("Anamnese enviada com sucesso!");
