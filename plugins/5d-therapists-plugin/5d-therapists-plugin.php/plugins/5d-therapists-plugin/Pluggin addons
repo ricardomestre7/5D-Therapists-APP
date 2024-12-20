@@ -1,0 +1,2103 @@
+<?php
+/*
+Plugin Name: 5D Therapists Addons
+Description: Plugin para adicionar funcionalidades extras ao app 5D Therapists, como redirecionamento de páginas, botões de acesso, edições fáceis via frontend, agendamento de sessões, prontuário digital e sistema de pagamentos, além de funcionalidades quânticas avançadas.
+Version: 1.7
+Author: Mestre Ricardo
+*/
+
+// Evitar acesso direto
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Definir constantes do plugin
+define('THERAPISTS_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('THERAPISTS_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('THERAPISTS_VERSION', '1.7');
+define('THERAPISTS_DB_VERSION', '1.0');
+
+class TherapistsAddons {
+    private static $instance = null;
+
+    // Singleton
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    private function __construct() {
+        $this->load_dependencies();
+        $this->init_hooks();
+    }
+
+    private function load_dependencies() {
+        // Carregar classes principais
+        require_once THERAPISTS_PLUGIN_DIR . 'includes/class-database.php';
+        require_once THERAPISTS_PLUGIN_DIR . 'includes/class-patient.php';
+        require_once THERAPISTS_PLUGIN_DIR . 'includes/class-quantum-analysis.php';
+        require_once THERAPISTS_PLUGIN_DIR . 'includes/class-chakra-analysis.php';
+        require_once THERAPISTS_PLUGIN_DIR . 'includes/class-frequency-report.php';
+        require_once THERAPISTS_PLUGIN_DIR . 'includes/class-sensor-analysis.php';
+        require_once THERAPISTS_PLUGIN_DIR . 'includes/class-settings.php';
+    }
+
+    private function init_hooks() {
+        // Hooks de ativação/desativação
+        register_activation_hook(__FILE__, array($this, 'activate'));
+        register_deactivation_hook(__FILE__, array($this, 'deactivate'));
+
+        // Ações de inicialização
+        add_action('init', array($this, 'init'));
+        add_action('admin_init', array($this, 'admin_init'));
+        add_action('admin_menu', array($this, 'admin_menu'));
+        
+        // Scripts e estilos
+        add_action('admin_enqueue_scripts', array($this, 'admin_scripts'));
+        add_action('wp_enqueue_scripts', array($this, 'frontend_scripts'));
+
+        // Registrar shortcodes
+        $this->register_shortcodes();
+    }
+
+    public function activate() {
+        // Criar/atualizar tabelas do banco de dados
+        TherapistsDatabase::create_tables();
+        
+        // Criar páginas padrão
+        $this->create_default_pages();
+        
+        // Salvar versão do plugin
+        update_option('therapists_addons_version', THERAPISTS_VERSION);
+        update_option('therapists_addons_db_version', THERAPISTS_DB_VERSION);
+        
+        flush_rewrite_rules();
+    }
+
+    public function deactivate() {
+        flush_rewrite_rules();
+    }
+
+    public function init() {
+        // Registrar tipos de post personalizados
+        $this->register_post_types();
+        
+        // Registrar taxonomias
+        $this->register_taxonomies();
+        
+        // Carregar traduções
+        load_plugin_textdomain('5d-therapists', false, dirname(plugin_basename(__FILE__)) . '/languages');
+    }
+
+    public function admin_init() {
+        // Registrar configurações
+        TherapistsSettings::register_settings();
+    }
+
+    public function admin_menu() {
+        // Menu principal
+        add_menu_page(
+            '5D Therapists Dashboard',
+            '5D Therapists',
+            'manage_options',
+            'therapists-dashboard',
+            array($this, 'render_dashboard'),
+            'dashicons-chart-bar',
+            5
+        );
+
+        // Submenus
+        add_submenu_page(
+            'therapists-dashboard',
+            'Configurações',
+            'Configurações',
+            'manage_options',
+            'therapists-settings',
+            array('TherapistsSettings', 'render_settings_page')
+        );
+    }
+
+    public function admin_scripts($hook) {
+        // Admin CSS
+        wp_enqueue_style(
+            'therapists-admin-style',
+            THERAPISTS_PLUGIN_URL . 'assets/css/admin.css',
+            array(),
+            THERAPISTS_VERSION
+        );
+
+        // Admin JavaScript
+        wp_enqueue_script(
+            'therapists-admin-script',
+            THERAPISTS_PLUGIN_URL . 'assets/js/admin.js',
+            array('jquery'),
+            THERAPISTS_VERSION,
+            true
+        );
+    }
+
+    public function frontend_scripts() {
+        // Frontend CSS
+        wp_enqueue_style(
+            'therapists-quantum-style',
+            THERAPISTS_PLUGIN_URL . 'assets/css/quantum-styles.css',
+            array(),
+            THERAPISTS_VERSION
+        );
+
+        // Frontend JavaScript
+        wp_enqueue_script(
+            'therapists-quantum-effects',
+            THERAPISTS_PLUGIN_URL . 'assets/js/quantum-effects.js',
+            array('jquery'),
+            THERAPISTS_VERSION,
+            true
+        );
+
+        // Localizar script
+        wp_localize_script('therapists-quantum-effects', 'therapistsAjax', array(
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('therapists_nonce')
+        ));
+    }
+
+    private function register_shortcodes() {
+        add_shortcode('quantum_analysis', array('TherapistsQuantumAnalysis', 'render_shortcode'));
+        add_shortcode('patient_registration', array('TherapistsPatient', 'render_registration_form'));
+        add_shortcode('chakra_analysis', array('TherapistsChakraAnalysis', 'render_shortcode'));
+        add_shortcode('frequency_report', array('TherapistsFrequencyReport', 'render_shortcode'));
+        add_shortcode('sensor_analysis', array('TherapistsSensorAnalysis', 'render_shortcode'));
+    }
+
+    private function create_default_pages() {
+        $default_pages = array(
+            'quantum-analysis' => array(
+                'title' => 'Análise Energética Quântica',
+                'content' => '[quantum_analysis]'
+            ),
+            'frequency-report' => array(
+                'title' => 'Relatórios de Frequência Quântica',
+                'content' => '[frequency_report]'
+            ),
+            'sensor-analysis' => array(
+                'title' => 'Análise por Sensores',
+                'content' => '[sensor_analysis]'
+            ),
+            'chakra-analysis' => array(
+                'title' => 'Análise dos Chakras',
+                'content' => '[chakra_analysis]'
+            )
+        );
+
+        foreach ($default_pages as $slug => $page) {
+            if (null === get_page_by_path($slug)) {
+                wp_insert_post(array(
+                    'post_title' => $page['title'],
+                    'post_content' => $page['content'],
+                    'post_name' => $slug,
+                    'post_status' => 'publish',
+                    'post_type' => 'page'
+                ));
+            }
+        }
+    }
+
+    public function render_dashboard() {
+        require_once THERAPISTS_PLUGIN_DIR . 'templates/admin/dashboard.php';
+    }
+
+    private function register_post_types() {
+        // Registrar tipos de post personalizados se necessário
+    }
+
+    private function register_taxonomies() {
+        // Registrar taxonomias personalizadas se necessário
+    }
+}
+
+// Inicializar plugin
+function therapists_addons_init() {
+    return TherapistsAddons::get_instance();
+}
+
+// Iniciar plugin após todos os plugins carregados
+add_action('plugins_loaded', 'therapists_addons_init');
+
+<?php
+class TherapistsDatabase {
+    private static $tables = array(
+        'quantum_patients' => array(
+            'id' => 'mediumint(9) NOT NULL AUTO_INCREMENT',
+            'patient_uuid' => 'VARCHAR(36) NOT NULL UNIQUE',
+            'name' => 'VARCHAR(100) NOT NULL',
+            'email' => 'VARCHAR(100) UNIQUE',
+            'birth_date' => 'DATE',
+            'phone' => 'VARCHAR(20)',
+            'registration_date' => 'DATETIME DEFAULT CURRENT_TIMESTAMP',
+            'last_update' => 'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+            'status' => 'VARCHAR(20) DEFAULT "active"',
+            'primary_key' => 'id',
+            'indexes' => array(
+                'idx_patient_uuid' => 'patient_uuid',
+                'idx_email' => 'email'
+            )
+        ),
+        'quantum_analysis' => array(
+            'id' => 'mediumint(9) NOT NULL AUTO_INCREMENT',
+            'patient_id' => 'mediumint(9) NOT NULL',
+            'analysis_date' => 'datetime DEFAULT CURRENT_TIMESTAMP',
+            'analysis_result' => 'longtext NOT NULL',
+            'analysis_type' => 'VARCHAR(50) NOT NULL',
+            'frequency_level' => 'DECIMAL(10,2)',
+            'energy_balance' => 'INT',
+            'primary_key' => 'id',
+            'indexes' => array(
+                'idx_patient_id' => 'patient_id',
+                'idx_analysis_date' => 'analysis_date'
+            )
+        ),
+        'frequency_reports' => array(
+            'id' => 'mediumint(9) NOT NULL AUTO_INCREMENT',
+            'patient_id' => 'mediumint(9) NOT NULL',
+            'report_date' => 'datetime DEFAULT CURRENT_TIMESTAMP',
+            'report_data' => 'longtext NOT NULL',
+            'frequency_type' => 'VARCHAR(50)',
+            'measurement_values' => 'JSON',
+            'primary_key' => 'id',
+            'indexes' => array(
+                'idx_patient_report' => 'patient_id'
+            )
+        ),
+        'chakra_readings' => array(
+            'id' => 'mediumint(9) NOT NULL AUTO_INCREMENT',
+            'patient_id' => 'mediumint(9) NOT NULL',
+            'reading_date' => 'datetime DEFAULT CURRENT_TIMESTAMP',
+            'chakra_data' => 'JSON NOT NULL',
+            'overall_balance' => 'INT',
+            'recommendations' => 'text',
+            'primary_key' => 'id',
+            'indexes' => array(
+                'idx_patient_chakra' => 'patient_id'
+            )
+        )
+    );
+
+    public static function create_tables() {
+        global $wpdb;
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+
+        $charset_collate = $wpdb->get_charset_collate();
+
+        foreach (self::$tables as $table_name => $columns) {
+            $sql = self::generate_table_sql($table_name, $columns, $charset_collate);
+            dbDelta($sql);
+        }
+    }
+
+    private static function generate_table_sql($table_name, $columns, $charset_collate) {
+        global $wpdb;
+        $full_table_name = $wpdb->prefix . $table_name;
+        
+        $sql = "CREATE TABLE $full_table_name (\n";
+        
+        // Adicionar colunas
+        foreach ($columns as $column => $definition) {
+            if ($column !== 'primary_key' && $column !== 'indexes') {
+                $sql .= "$column $definition,\n";
+            }
+        }
+        
+        // Adicionar chave primária
+        if (isset($columns['primary_key'])) {
+            $sql .= "PRIMARY KEY  ({$columns['primary_key']}),\n";
+        }
+        
+        // Adicionar índices
+        if (isset($columns['indexes'])) {
+            foreach ($columns['indexes'] as $index_name => $index_column) {
+                $sql .= "INDEX $index_name ($index_column),\n";
+            }
+        }
+        
+        // Remover a última vírgula e adicionar o charset
+        $sql = rtrim($sql, ",\n") . "\n) $charset_collate;";
+        
+        return $sql;
+    }
+
+    public static function get_table_name($table) {
+        global $wpdb;
+        return $wpdb->prefix . $table;
+    }
+
+    public static function insert($table, $data) {
+        global $wpdb;
+        $table_name = self::get_table_name($table);
+        
+        $result = $wpdb->insert($table_name, $data);
+        
+        if ($result === false) {
+            return new WP_Error('db_insert_error', 
+                'Erro ao inserir dados na tabela: ' . $wpdb->last_error);
+        }
+        
+        return $wpdb->insert_id;
+    }
+
+    public static function update($table, $data, $where) {
+        global $wpdb;
+        $table_name = self::get_table_name($table);
+        
+        $result = $wpdb->update($table_name, $data, $where);
+        
+        if ($result === false) {
+            return new WP_Error('db_update_error', 
+                'Erro ao atualizar dados na tabela: ' . $wpdb->last_error);
+        }
+        
+        return $result;
+    }
+
+    public static function delete($table, $where) {
+        global $wpdb;
+        $table_name = self::get_table_name($table);
+        
+        $result = $wpdb->delete($table_name, $where);
+        
+        if ($result === false) {
+            return new WP_Error('db_delete_error', 
+                'Erro ao deletar dados da tabela: ' . $wpdb->last_error);
+        }
+        
+        return $result;
+    }
+
+    public static function get_results($table, $query = '', $output = OBJECT) {
+        global $wpdb;
+        $table_name = self::get_table_name($table);
+        
+        if (empty($query)) {
+            $query = "SELECT * FROM $table_name";
+        }
+        
+        return $wpdb->get_results($query, $output);
+    }
+
+    public static function get_row($table, $query = '', $output = OBJECT) {
+        global $wpdb;
+        $table_name = self::get_table_name($table);
+        
+        if (empty($query)) {
+            $query = "SELECT * FROM $table_name LIMIT 1";
+        }
+        
+        return $wpdb->get_row($query, $output);
+    }
+
+    public static function check_table_exists($table) {
+        global $wpdb;
+        $table_name = self::get_table_name($table);
+        return $wpdb->get_var("SHOW TABLES LIKE '$table_name'") === $table_name;
+    }
+}
+
+<?php
+class TherapistsPatient {
+    private $table_name = 'quantum_patients';
+    
+    public static function register_new_patient($patient_data) {
+        // Validar dados obrigatórios
+        if (empty($patient_data['name']) || empty($patient_data['email'])) {
+            return new WP_Error('missing_data', 'Nome e email são obrigatórios');
+        }
+
+        // Sanitizar dados
+        $sanitized_data = self::sanitize_patient_data($patient_data);
+        
+        // Verificar email duplicado
+        if (self::email_exists($sanitized_data['email'])) {
+            return new WP_Error('duplicate_email', 'Este email já está cadastrado');
+        }
+
+        // Gerar UUID único
+        $sanitized_data['patient_uuid'] = self::generate_uuid();
+
+        // Inserir no banco
+        $result = TherapistsDatabase::insert(
+            'quantum_patients',
+            $sanitized_data
+        );
+
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return array(
+            'success' => true,
+            'patient_id' => $result,
+            'patient_uuid' => $sanitized_data['patient_uuid']
+        );
+    }
+
+    private static function sanitize_patient_data($data) {
+        return array(
+            'name' => sanitize_text_field($data['name']),
+            'email' => sanitize_email($data['email']),
+            'birth_date' => isset($data['birth_date']) ? sanitize_text_field($data['birth_date']) : null,
+            'phone' => isset($data['phone']) ? sanitize_text_field($data['phone']) : null,
+            'status' => 'active'
+        );
+    }
+
+    private static function email_exists($email) {
+        global $wpdb;
+        $table = TherapistsDatabase::get_table_name('quantum_patients');
+        return $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table WHERE email = %s",
+            $email
+        ));
+    }
+
+    private static function generate_uuid() {
+        if (function_exists('com_create_guid')) {
+            return trim(com_create_guid(), '{}');
+        }
+        
+        return sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X',
+            mt_rand(0, 65535), mt_rand(0, 65535),
+            mt_rand(0, 65535), mt_rand(16384, 20479),
+            mt_rand(32768, 49151), mt_rand(0, 65535),
+            mt_rand(0, 65535), mt_rand(0, 65535)
+        );
+    }
+
+    public static function get_patient($patient_id) {
+        return TherapistsDatabase::get_row(
+            'quantum_patients',
+            "SELECT * FROM {$GLOBALS['wpdb']->prefix}quantum_patients WHERE id = %d",
+            array($patient_id)
+        );
+    }
+
+    public static function get_patient_by_uuid($uuid) {
+        return TherapistsDatabase::get_row(
+            'quantum_patients',
+            "SELECT * FROM {$GLOBALS['wpdb']->prefix}quantum_patients WHERE patient_uuid = %s",
+            array($uuid)
+        );
+    }
+
+    public static function update_patient($patient_id, $data) {
+        $sanitized_data = self::sanitize_patient_data($data);
+        
+        // Verificar se email já existe (exceto para o próprio paciente)
+        if (!empty($sanitized_data['email'])) {
+            global $wpdb;
+            $table = TherapistsDatabase::get_table_name('quantum_patients');
+            $existing_patient = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM $table WHERE email = %s AND id != %d",
+                $sanitized_data['email'],
+                $patient_id
+            ));
+            
+            if ($existing_patient) {
+                return new WP_Error('duplicate_email', 'Este email já está em uso');
+            }
+        }
+
+        return TherapistsDatabase::update(
+            'quantum_patients',
+            $sanitized_data,
+            array('id' => $patient_id)
+        );
+    }
+
+    public static function delete_patient($patient_id) {
+        return TherapistsDatabase::update(
+            'quantum_patients',
+            array('status' => 'inactive'),
+            array('id' => $patient_id)
+        );
+    }
+
+    public static function get_all_patients($args = array()) {
+        global $wpdb;
+        $table = TherapistsDatabase::get_table_name('quantum_patients');
+        
+        $defaults = array(
+            'status' => 'active',
+            'orderby' => 'registration_date',
+            'order' => 'DESC',
+            'limit' => 20,
+            'offset' => 0
+        );
+
+        $args = wp_parse_args($args, $defaults);
+        
+        $query = "SELECT * FROM $table WHERE status = %s 
+                 ORDER BY {$args['orderby']} {$args['order']}
+                 LIMIT %d OFFSET %d";
+
+        return TherapistsDatabase::get_results(
+            'quantum_patients',
+            $wpdb->prepare($query, $args['status'], $args['limit'], $args['offset'])
+        );
+    }
+
+    public static function render_registration_form() {
+        ob_start();
+        ?>
+        <div class="patient-registration-form">
+            <form id="newPatientForm" class="quantum-form">
+                <?php wp_nonce_field('patient_registration_nonce'); ?>
+                
+                <div class="form-group">
+                    <label for="patient_name">Nome Completo *</label>
+                    <input type="text" id="patient_name" name="name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="patient_email">Email *</label>
+                    <input type="email" id="patient_email" name="email" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="patient_birth">Data de Nascimento</label>
+                    <input type="date" id="patient_birth" name="birth_date">
+                </div>
+
+                <div class="form-group">
+                    <label for="patient_phone">Telefone</label>
+                    <input type="tel" id="patient_phone" name="phone">
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="quantum-button">Registrar Paciente</button>
+                </div>
+            </form>
+            <div id="registrationResult" class="form-result"></div>
+        </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            $('#newPatientForm').on('submit', function(e) {
+                e.preventDefault();
+                
+                const form = $(this);
+                const submitButton = form.find('button[type="submit"]');
+                const resultDiv = $('#registrationResult');
+                
+                // Desabilitar botão e mostrar loading
+                submitButton.prop('disabled', true).text('Registrando...');
+                
+                // Preparar dados
+                const formData = new FormData(this);
+                formData.append('action', 'register_patient');
+                
+                // Enviar requisição
+                $.ajax({
+                    url: therapistsAjax.ajaxurl,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            resultDiv.html('<div class="success">Paciente registrado com sucesso!</div>');
+                            form[0].reset();
+                        } else {
+                            resultDiv.html('<div class="error">Erro: ' + response.data + '</div>');
+                        }
+                    },
+                    error: function() {
+                        resultDiv.html('<div class="error">Erro ao processar requisição</div>');
+                    },
+                    complete: function() {
+                        submitButton.prop('disabled', false).text('Registrar Paciente');
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+        return ob_get_clean();
+    }
+
+    // AJAX handlers
+    public static function register_ajax_handlers() {
+        add_action('wp_ajax_register_patient', array(__CLASS__, 'handle_registration'));
+        add_action('wp_ajax_nopriv_register_patient', array(__CLASS__, 'handle_registration'));
+    }
+
+    public static function handle_registration() {
+        check_ajax_referer('patient_registration_nonce');
+        
+        $patient_data = array(
+            'name' => $_POST['name'],
+            'email' => $_POST['email'],
+            'birth_date' => isset($_POST['birth_date']) ? $_POST['birth_date'] : null,
+            'phone' => isset($_POST['phone']) ? $_POST['phone'] : null
+        );
+        
+        $result = self::register_new_patient($patient_data);
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+        
+        wp_send_json_success($result);
+    }
+}
+
+// Inicializar handlers AJAX
+add_action('init', array('TherapistsPatient', 'register_ajax_handlers'));
+
+<?php
+class TherapistsQuantumAnalysis {
+    private static $analysis_types = array(
+        'basic' => 'Análise Básica',
+        'advanced' => 'Análise Avançada',
+        'complete' => 'Análise Completa'
+    );
+
+    public static function render_shortcode($atts) {
+        // Verificar se usuário está logado
+        if (!is_user_logged_in()) {
+            return '<p>Por favor, faça login para realizar análises quânticas.</p>';
+        }
+
+        // Enfileirar scripts e estilos necessários
+        self::enqueue_assets();
+
+        ob_start();
+        ?>
+        <div class="quantum-analysis-container">
+            <div class="quantum-controls">
+                <select id="patientSelect" class="quantum-select">
+                    <option value="">Selecione o Paciente</option>
+                    <?php self::render_patient_options(); ?>
+                </select>
+
+                <select id="analysisType" class="quantum-select">
+                    <?php foreach (self::$analysis_types as $key => $label): ?>
+                        <option value="<?php echo esc_attr($key); ?>">
+                            <?php echo esc_html($label); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <button id="startAnalysis" class="quantum-button">
+                    Iniciar Análise
+                </button>
+            </div>
+
+            <div id="quantumVisualizer" class="quantum-visualizer">
+                <canvas id="quantumCanvas"></canvas>
+                <div class="quantum-readings">
+                    <div class="reading-card frequency">
+                        <h3>Frequência Base</h3>
+                        <div class="value">0.00 Hz</div>
+                    </div>
+                    <div class="reading-card harmony">
+                        <h3>Harmonia Quântica</h3>
+                        <div class="value">0%</div>
+                    </div>
+                    <div class="reading-card energy">
+                        <h3>Campo Energético</h3>
+                        <div class="value">Neutro</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="analysisResults" class="analysis-results hidden">
+                <h2>Resultados da Análise</h2>
+                <div class="results-content"></div>
+                <button id="saveAnalysis" class="quantum-button">
+                    Salvar Análise
+                </button>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    private static function enqueue_assets() {
+        wp_enqueue_style(
+            'quantum-analysis-style',
+            THERAPISTS_PLUGIN_URL . 'assets/css/quantum-analysis.css',
+            array(),
+            THERAPISTS_VERSION
+        );
+
+        wp_enqueue_script(
+            'quantum-analysis-script',
+            THERAPISTS_PLUGIN_URL . 'assets/js/quantum-analysis.js',
+            array('jquery'),
+            THERAPISTS_VERSION,
+            true
+        );
+
+        wp_localize_script('quantum-analysis-script', 'quantumAnalysis', array(
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('quantum_analysis_nonce'),
+            'strings' => array(
+                'startingAnalysis' => 'Iniciando análise...',
+                'processingData' => 'Processando dados quânticos...',
+                'analysisComplete' => 'Análise completa!',
+                'error' => 'Erro ao realizar análise'
+            )
+        ));
+    }
+
+    private static function render_patient_options() {
+        $patients = TherapistsPatient::get_all_patients();
+        foreach ($patients as $patient) {
+            printf(
+                '<option value="%d">%s</option>',
+                esc_attr($patient->id),
+                esc_html($patient->name)
+            );
+        }
+    }
+
+    public static function perform_analysis($patient_id, $type = 'basic') {
+        // Validar dados
+        if (!self::validate_analysis_request($patient_id, $type)) {
+            return new WP_Error('invalid_request', 'Dados inválidos para análise');
+        }
+
+        try {
+            // Realizar análise baseada no tipo
+            $analysis_data = self::generate_analysis_data($type);
+            
+            // Processar resultados
+            $results = self::process_analysis_results($analysis_data);
+            
+            // Salvar no banco de dados
+            $saved = self::save_analysis_results($patient_id, $results);
+            
+            if (is_wp_error($saved)) {
+                throw new Exception($saved->get_error_message());
+            }
+
+            return array(
+                'success' => true,
+                'data' => $results
+            );
+
+        } catch (Exception $e) {
+            return new WP_Error('analysis_error', $e->getMessage());
+        }
+    }
+
+    private static function validate_analysis_request($patient_id, $type) {
+        if (!is_numeric($patient_id) || $patient_id <= 0) {
+            return false;
+        }
+
+        if (!array_key_exists($type, self::$analysis_types)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static function generate_analysis_data($type) {
+        $base_frequency = 528.00; // Frequência Solfeggio de cura
+        
+        switch ($type) {
+            case 'advanced':
+                return array(
+                    'frequency' => $base_frequency + (rand(-50, 50) / 100),
+                    'harmony' => rand(75, 98),
+                    'energy_field' => rand(80, 100),
+                    'quantum_coherence' => rand(85, 100),
+                    'chakra_alignment' => self::generate_chakra_data(),
+                    'meridian_flow' => self::generate_meridian_data()
+                );
+            
+            case 'complete':
+                return array(
+                    'frequency' => $base_frequency + (rand(-25, 25) / 100),
+                    'harmony' => rand(85, 100),
+                    'energy_field' => rand(90, 100),
+                    'quantum_coherence' => rand(90, 100),
+                    'chakra_alignment' => self::generate_chakra_data(),
+                    'meridian_flow' => self::generate_meridian_data(),
+                    'aura_analysis' => self::generate_aura_data(),
+                    'dna_activation' => rand(85, 100)
+                );
+            
+            default: // basic
+                return array(
+                    'frequency' => $base_frequency + (rand(-100, 100) / 100),
+                    'harmony' => rand(60, 95),
+                    'energy_field' => rand(70, 95)
+                );
+        }
+    }
+
+    private static function generate_chakra_data() {
+        $chakras = array('root', 'sacral', 'solar', 'heart', 'throat', 'third_eye', 'crown');
+        $data = array();
+        
+        foreach ($chakras as $chakra) {
+            $data[$chakra] = array(
+                'alignment' => rand(70, 100),
+                'energy_flow' => rand(75, 100),
+                'blockage' => rand(0, 30)
+            );
+        }
+        
+        return $data;
+    }
+
+    private static function generate_meridian_data() {
+        $meridians = array(
+            'lung', 'large_intestine', 'stomach', 'spleen',
+            'heart', 'small_intestine', 'bladder', 'kidney',
+            'pericardium', 'triple_warmer', 'gallbladder', 'liver'
+        );
+        
+        $data = array();
+        foreach ($meridians as $meridian) {
+            $data[$meridian] = array(
+                'flow' => rand(75, 100),
+                'balance' => rand(70, 100)
+            );
+        }
+        
+        return $data;
+    }
+
+    private static function generate_aura_data() {
+        $layers = array('ethereal', 'emotional', 'mental', 'astral');
+        $data = array();
+        
+        foreach ($layers as $layer) {
+            $data[$layer] = array(
+                'strength' => rand(75, 100),
+                'clarity' => rand(70, 100),
+                'color' => self::generate_aura_color()
+            );
+        }
+        
+        return $data;
+    }
+
+    private static function generate_aura_color() {
+        $colors = array('indigo', 'violet', 'blue', 'green', 'yellow', 'orange', 'red');
+        return $colors[array_rand($colors)];
+    }
+
+    private static function process_analysis_results($data) {
+        // Adicionar timestamp e metadados
+        $data['timestamp'] = current_time('mysql');
+        $data['analysis_version'] = THERAPISTS_VERSION;
+        
+        // Calcular score geral
+        $data['overall_score'] = self::calculate_overall_score($data);
+        
+        // Gerar recomendações
+        $data['recommendations'] = self::generate_recommendations($data);
+        
+        return $data;
+    }
+
+    private static function calculate_overall_score($data) {
+        $scores = array();
+        
+        if (isset($data['harmony'])) {
+            $scores[] = $data['harmony'];
+        }
+        if (isset($data['energy_field'])) {
+            $scores[] = $data['energy_field'];
+        }
+        if (isset($data['quantum_coherence'])) {
+            $scores[] = $data['quantum_coherence'];
+        }
+        
+        return !empty($scores) ? array_sum($scores) / count($scores) : 0;
+    }
+
+    private static function generate_recommendations($data) {
+        $recommendations = array();
+        
+        // Análise de frequência
+        if (isset($data['frequency'])) {
+            if ($data['frequency'] < 528) {
+                $recommendations[] = "Recomenda-se terapia com frequência Solfeggio 528Hz";
+            }
+        }
+        
+        // Análise de harmonia
+        if (isset($data['harmony']) && $data['harmony'] < 80) {
+            $recommendations[] = "Sugerimos práticas de harmonização energética";
+        }
+        
+        // Mais recomendações baseadas em outros parâmetros...
+        
+        return $recommendations;
+    }
+
+    private static function save_analysis_results($patient_id, $results) {
+        return TherapistsDatabase::insert('quantum_analysis', array(
+            'patient_id' => $patient_id,
+            'analysis_result' => json_encode($results),
+            'analysis_type' => isset($results['analysis_type']) ? $results['analysis_type'] : 'basic',
+            'frequency_level' => isset($results['frequency']) ? $results['frequency'] : 0,
+            'energy_balance' => isset($results['energy_field']) ? $results['energy_field'] : 0
+        ));
+    }
+
+    // AJAX Handlers
+    public static function register_ajax_handlers() {
+        add_action('wp_ajax_perform_quantum_analysis', array(__CLASS__, 'ajax_perform_analysis'));
+        add_action('wp_ajax_get_analysis_history', array(__CLASS__, 'ajax_get_analysis_history'));
+    }
+
+    public static function ajax_perform_analysis() {
+        check_ajax_referer('quantum_analysis_nonce', 'nonce');
+        
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error('Permissão negada');
+        }
+        
+        $patient_id = isset($_POST['patient_id']) ? intval($_POST['patient_id']) : 0;
+        $type = isset($_POST['type']) ? sanitize_text_field($_POST['type']) : 'basic';
+        
+        $result = self::perform_analysis($patient_id, $type);
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+        
+        wp_send_json_success($result);
+    }
+
+    public static function ajax_get_analysis_history() {
+        check_ajax_referer('quantum_analysis_nonce', 'nonce');
+        
+        $patient_id = isset($_POST['patient_id']) ? intval($_POST['patient_id']) : 0;
+        
+        if (!$patient_id) {
+            wp_send_json_error('ID do paciente inválido');
+        }
+        
+        $history = TherapistsDatabase::get_results(
+            'quantum_analysis',
+            "SELECT * FROM {$GLOBALS['wpdb']->prefix}quantum_analysis 
+             WHERE patient_id = %d ORDER BY analysis_date DESC",
+            array($patient_id)
+        );
+        
+        wp_send_json_success($history);
+    }
+}
+
+// Inicializar handlers AJAX
+add_action('init', array('TherapistsQuantumAnalysis', 'register_ajax_handlers'));
+
+<?php
+class TherapistsChakraAnalysis {
+    private static $chakras = array(
+        'sahasrara' => array(
+            'name' => 'Coronário',
+            'frequency' => 963,
+            'color' => '#9B59B6',
+            'element' => 'Pensamento'
+        ),
+        'ajna' => array(
+            'name' => 'Frontal',
+            'frequency' => 852,
+            'color' => '#5B48A2',
+            'element' => 'Luz'
+        ),
+        'vishuddha' => array(
+            'name' => 'Laríngeo',
+            'frequency' => 741,
+            'color' => '#3498DB',
+            'element' => 'Éter'
+        ),
+        'anahata' => array(
+            'name' => 'Cardíaco',
+            'frequency' => 639,
+            'color' => '#2ECC71',
+            'element' => 'Ar'
+        ),
+        'manipura' => array(
+            'name' => 'Plexo Solar',
+            'frequency' => 528,
+            'color' => '#F1C40F',
+            'element' => 'Fogo'
+        ),
+        'svadhishthana' => array(
+            'name' => 'Sacral',
+            'frequency' => 417,
+            'color' => '#E67E22',
+            'element' => 'Água'
+        ),
+        'muladhara' => array(
+            'name' => 'Básico',
+            'frequency' => 396,
+            'color' => '#E74C3C',
+            'element' => 'Terra'
+        )
+    );
+
+    public static function render_shortcode($atts) {
+        if (!is_user_logged_in()) {
+            return '<p>Por favor, faça login para realizar análises dos chakras.</p>';
+        }
+
+        self::enqueue_assets();
+
+        ob_start();
+        ?>
+        <div class="chakra-analysis-container">
+            <div class="chakra-controls">
+                <select id="patientSelect" class="chakra-select">
+                    <option value="">Selecione o Paciente</option>
+                    <?php self::render_patient_options(); ?>
+                </select>
+
+                <button id="startChakraAnalysis" class="chakra-button">
+                    Iniciar Análise dos Chakras
+                </button>
+            </div>
+
+            <div id="chakraVisualizer" class="chakra-visualizer">
+                <?php self::render_chakra_points(); ?>
+            </div>
+
+            <div id="chakraReadings" class="chakra-readings hidden">
+                <?php foreach (self::$chakras as $key => $chakra): ?>
+                <div class="chakra-reading" data-chakra="<?php echo esc_attr($key); ?>">
+                    <h3><?php echo esc_html($chakra['name']); ?></h3>
+                    <div class="chakra-stats">
+                        <div class="frequency">
+                            <span class="label">Frequência:</span>
+                            <span class="value"><?php echo esc_html($chakra['frequency']); ?> Hz</span>
+                        </div>
+                        <div class="alignment">
+                            <span class="label">Alinhamento:</span>
+                            <span class="value">0%</span>
+                        </div>
+                        <div class="energy-flow">
+                            <span class="label">Fluxo Energético:</span>
+                            <span class="value">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div id="chakraAnalysisResults" class="analysis-results hidden">
+                <h2>Resultados da Análise dos Chakras</h2>
+                <div class="results-content"></div>
+                <div class="chakra-recommendations"></div>
+                <button id="saveChakraAnalysis" class="chakra-button">
+                    Salvar Análise
+                </button>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    private static function enqueue_assets() {
+        wp_enqueue_style(
+            'chakra-analysis-style',
+            THERAPISTS_PLUGIN_URL . 'assets/css/chakra-analysis.css',
+            array(),
+            THERAPISTS_VERSION
+        );
+
+        wp_enqueue_script(
+            'chakra-analysis-script',
+            THERAPISTS_PLUGIN_URL . 'assets/js/chakra-analysis.js',
+            array('jquery'),
+            THERAPISTS_VERSION,
+            true
+        );
+
+        wp_localize_script('chakra-analysis-script', 'chakraAnalysis', array(
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('chakra_analysis_nonce'),
+            'chakras' => self::$chakras,
+            'strings' => array(
+                'analyzing' => 'Analisando chakras...',
+                'complete' => 'Análise completa!',
+                'error' => 'Erro na análise'
+            )
+        ));
+    }
+
+    private static function render_patient_options() {
+        $patients = TherapistsPatient::get_all_patients();
+        foreach ($patients as $patient) {
+            printf(
+                '<option value="%d">%s</option>',
+                esc_attr($patient->id),
+                esc_html($patient->name)
+            );
+        }
+    }
+
+    private static function render_chakra_points() {
+        foreach (self::$chakras as $key => $chakra) {
+            ?>
+            <div class="chakra-point" 
+                 data-chakra="<?php echo esc_attr($key); ?>"
+                 style="background-color: <?php echo esc_attr($chakra['color']); ?>">
+                <div class="chakra-wave"></div>
+                <div class="chakra-info">
+                    <span class="chakra-name"><?php echo esc_html($chakra['name']); ?></span>
+                    <span class="chakra-freq"><?php echo esc_html($chakra['frequency']); ?> Hz</span>
+                </div>
+            </div>
+            <?php
+        }
+    }
+
+    public static function perform_analysis($patient_id) {
+        if (!self::validate_request($patient_id)) {
+            return new WP_Error('invalid_request', 'Dados inválidos para análise');
+        }
+
+        try {
+            $analysis_data = self::generate_chakra_analysis();
+            $results = self::process_chakra_results($analysis_data);
+            
+            $saved = self::save_analysis_results($patient_id, $results);
+            
+            if (is_wp_error($saved)) {
+                throw new Exception($saved->get_error_message());
+            }
+
+            return array(
+                'success' => true,
+                'data' => $results
+            );
+
+        } catch (Exception $e) {
+            return new WP_Error('analysis_error', $e->getMessage());
+        }
+    }
+
+    private static function validate_request($patient_id) {
+        return is_numeric($patient_id) && $patient_id > 0;
+    }
+
+    private static function generate_chakra_analysis() {
+        $analysis = array();
+        
+        foreach (self::$chakras as $key => $chakra) {
+            $analysis[$key] = array(
+                'frequency' => $chakra['frequency'],
+                'base_frequency' => $chakra['frequency'],
+                'alignment' => rand(70, 100),
+                'energy_flow' => rand(75, 100),
+                'blockage' => rand(0, 30),
+                'color_intensity' => rand(80, 100),
+                'rotation' => array(
+                    'speed' => rand(85, 100),
+                    'direction' => rand(0, 1) ? 'clockwise' : 'counterclockwise'
+                )
+            );
+        }
+        
+        return $analysis;
+    }
+
+    private static function process_chakra_results($data) {
+        $overall_balance = 0;
+        $recommendations = array();
+        
+        foreach ($data as $chakra => $readings) {
+            // Calcular balanço geral
+            $balance = ($readings['alignment'] + $readings['energy_flow']) / 2;
+            $overall_balance += $balance;
+            
+            // Gerar recomendações específicas
+            if ($readings['blockage'] > 20) {
+                $recommendations[$chakra] = self::generate_chakra_recommendations($chakra, $readings);
+            }
+        }
+        
+        $overall_balance = $overall_balance / count($data);
+        
+        return array(
+            'timestamp' => current_time('mysql'),
+            'readings' => $data,
+            'overall_balance' => $overall_balance,
+            'recommendations' => $recommendations
+        );
+    }
+
+    private static function generate_chakra_recommendations($chakra, $readings) {
+        $recommendations = array();
+        $chakra_data = self::$chakras[$chakra];
+        
+        // Recomendações baseadas no bloqueio
+        if ($readings['blockage'] > 25) {
+            $recommendations[] = sprintf(
+                'Meditação com frequência %dHz para harmonização do chakra %s',
+                $chakra_data['frequency'],
+                $chakra_data['name']
+            );
+        }
+        
+        // Recomendações baseadas no alinhamento
+        if ($readings['alignment'] < 80) {
+            $recommendations[] = sprintf(
+                'Prática de alinhamento com cristais para o chakra %s',
+                $chakra_data['name']
+            );
+        }
+        
+        // Recomendações baseadas no fluxo energético
+        if ($readings['energy_flow'] < 85) {
+            $recommendations[] = sprintf(
+                'Exercícios de respiração focados no elemento %s',
+                $chakra_data['element']
+            );
+        }
+        
+        return $recommendations;
+    }
+
+    private static function save_analysis_results($patient_id, $results) {
+        return TherapistsDatabase::insert('chakra_readings', array(
+            'patient_id' => $patient_id,
+            'reading_date' => current_time('mysql'),
+            'chakra_data' => json_encode($results['readings']),
+            'overall_balance' => $results['overall_balance'],
+            'recommendations' => json_encode($results['recommendations'])
+        ));
+    }
+
+    // AJAX Handlers
+    public static function register_ajax_handlers() {
+        add_action('wp_ajax_perform_chakra_analysis', array(__CLASS__, 'ajax_perform_analysis'));
+        add_action('wp_ajax_get_chakra_history', array(__CLASS__, 'ajax_get_analysis_history'));
+    }
+
+    public static function ajax_perform_analysis() {
+        check_ajax_referer('chakra_analysis_nonce', 'nonce');
+        
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error('Permissão negada');
+        }
+        
+        $patient_id = isset($_POST['patient_id']) ? intval($_POST['patient_id']) : 0;
+        
+        $result = self::perform_analysis($patient_id);
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+        
+        wp_send_json_success($result);
+    }
+
+    public static function ajax_get_analysis_history() {
+        check_ajax_referer('chakra_analysis_nonce', 'nonce');
+        
+        $patient_id = isset($_POST['patient_id']) ? intval($_POST['patient_id']) : 0;
+        
+        if (!$patient_id) {
+            wp_send_json_error('ID do paciente inválido');
+        }
+        
+        $history = TherapistsDatabase::get_results(
+            'chakra_readings',
+            "SELECT * FROM {$GLOBALS['wpdb']->prefix}chakra_readings 
+             WHERE patient_id = %d ORDER BY reading_date DESC",
+            array($patient_id)
+        );
+        
+        wp_send_json_success($history);
+    }
+}
+
+// Inicializar handlers AJAX
+add_action('init', array('TherapistsChakraAnalysis', 'register_ajax_handlers'));
+
+<?php
+class TherapistsFrequencyReport {
+    private static $frequency_ranges = array(
+        'delta' => array(
+            'name' => 'Delta',
+            'min' => 0.5,
+            'max' => 4,
+            'description' => 'Ondas cerebrais de sono profundo e cura'
+        ),
+        'theta' => array(
+            'name' => 'Theta',
+            'min' => 4,
+            'max' => 8,
+            'description' => 'Meditação profunda e criatividade'
+        ),
+        'alpha' => array(
+            'name' => 'Alpha',
+            'min' => 8,
+            'max' => 13,
+            'description' => 'Relaxamento e equilíbrio'
+        ),
+        'beta' => array(
+            'name' => 'Beta',
+            'min' => 13,
+            'max' => 30,
+            'description' => 'Estado de alerta e concentração'
+        ),
+        'gamma' => array(
+            'name' => 'Gamma',
+            'min' => 30,
+            'max' => 100,
+            'description' => 'Processamento cognitivo avançado'
+        ),
+        'solfeggio' => array(
+            'frequencies' => array(
+                396 => 'Libertação do medo',
+                417 => 'Facilitação de mudança',
+                528 => 'Transformação e milagres',
+                639 => 'Conexões e relacionamentos',
+                741 => 'Expressão e soluções',
+                852 => 'Retorno à ordem espiritual',
+                963 => 'Conexão com o divino'
+            )
+        )
+    );
+
+    public static function render_shortcode($atts) {
+        if (!is_user_logged_in()) {
+            return '<p>Por favor, faça login para acessar os relatórios de frequência.</p>';
+        }
+
+        self::enqueue_assets();
+
+        ob_start();
+        ?>
+        <div class="frequency-report-container">
+            <div class="report-controls">
+                <select id="patientSelect" class="frequency-select">
+                    <option value="">Selecione o Paciente</option>
+                    <?php self::render_patient_options(); ?>
+                </select>
+
+                <select id="reportType" class="frequency-select">
+                    <option value="brainwave">Ondas Cerebrais</option>
+                    <option value="solfeggio">Frequências Solfeggio</option>
+                    <option value="chakra">Frequências dos Chakras</option>
+                    <option value="comprehensive">Relatório Completo</option>
+                </select>
+
+                <button id="generateReport" class="frequency-button">
+                    Gerar Relatório
+                </button>
+            </div>
+
+            <div id="frequencyVisualizer" class="frequency-visualizer">
+                <canvas id="frequencyCanvas"></canvas>
+            </div>
+
+            <div id="frequencyReadings" class="frequency-readings hidden">
+                <?php self::render_frequency_ranges(); ?>
+            </div>
+
+            <div id="reportResults" class="report-results hidden">
+                <h2>Relatório de Frequências</h2>
+                <div class="results-content"></div>
+                <div class="frequency-recommendations"></div>
+                <button id="saveReport" class="frequency-button">
+                    Salvar Relatório
+                </button>
+                <button id="exportReport" class="frequency-button">
+                    Exportar PDF
+                </button>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    private static function enqueue_assets() {
+        wp_enqueue_style(
+            'frequency-report-style',
+            THERAPISTS_PLUGIN_URL . 'assets/css/frequency-report.css',
+            array(),
+            THERAPISTS_VERSION
+        );
+
+        wp_enqueue_script(
+            'chart-js',
+            'https://cdn.jsdelivr.net/npm/chart.js',
+            array(),
+            '3.7.0',
+            true
+        );
+
+        wp_enqueue_script(
+            'frequency-report-script',
+            THERAPISTS_PLUGIN_URL . 'assets/js/frequency-report.js',
+            array('jquery', 'chart-js'),
+            THERAPISTS_VERSION,
+            true
+        );
+
+        wp_localize_script('frequency-report-script', 'frequencyReport', array(
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('frequency_report_nonce'),
+            'ranges' => self::$frequency_ranges,
+            'strings' => array(
+                'generating' => 'Gerando relatório...',
+                'analyzing' => 'Analisando frequências...',
+                'complete' => 'Relatório concluído!',
+                'error' => 'Erro ao gerar relatório'
+            )
+        ));
+    }
+
+    private static function render_patient_options() {
+        $patients = TherapistsPatient::get_all_patients();
+        foreach ($patients as $patient) {
+            printf(
+                '<option value="%d">%s</option>',
+                esc_attr($patient->id),
+                esc_html($patient->name)
+            );
+        }
+    }
+
+    private static function render_frequency_ranges() {
+        foreach (self::$frequency_ranges as $key => $range) {
+            if ($key !== 'solfeggio') {
+                ?>
+                <div class="frequency-range" data-range="<?php echo esc_attr($key); ?>">
+                    <h3><?php echo esc_html($range['name']); ?></h3>
+                    <div class="range-stats">
+                        <div class="frequency-value">
+                            <span class="label">Faixa:</span>
+                            <span class="value">
+                                <?php echo esc_html($range['min']); ?> - 
+                                <?php echo esc_html($range['max']); ?> Hz
+                            </span>
+                        </div>
+                        <div class="resonance">
+                            <span class="label">Ressonância:</span>
+                            <span class="value">0%</span>
+                        </div>
+                    </div>
+                    <div class="range-description">
+                        <?php echo esc_html($range['description']); ?>
+                    </div>
+                </div>
+                <?php
+            }
+        }
+    }
+
+    public static function generate_report($patient_id, $type = 'comprehensive') {
+        if (!self::validate_request($patient_id, $type)) {
+            return new WP_Error('invalid_request', 'Dados inválidos para relatório');
+        }
+
+        try {
+            $report_data = self::generate_frequency_data($type);
+            $results = self::process_report_results($report_data, $type);
+            
+            $saved = self::save_report_results($patient_id, $results);
+            
+            if (is_wp_error($saved)) {
+                throw new Exception($saved->get_error_message());
+            }
+
+            return array(
+                'success' => true,
+                'data' => $results
+            );
+
+        } catch (Exception $e) {
+            return new WP_Error('report_error', $e->getMessage());
+        }
+    }
+
+    private static function validate_request($patient_id, $type) {
+        $valid_types = array('brainwave', 'solfeggio', 'chakra', 'comprehensive');
+        return is_numeric($patient_id) && $patient_id > 0 && in_array($type, $valid_types);
+    }
+
+    private static function generate_frequency_data($type) {
+        $data = array();
+        
+        switch ($type) {
+            case 'brainwave':
+                $data = self::generate_brainwave_data();
+                break;
+            case 'solfeggio':
+                $data = self::generate_solfeggio_data();
+                break;
+            case 'chakra':
+                $data = self::generate_chakra_frequency_data();
+                break;
+            case 'comprehensive':
+                $data = array(
+                    'brainwave' => self::generate_brainwave_data(),
+                    'solfeggio' => self::generate_solfeggio_data(),
+                    'chakra' => self::generate_chakra_frequency_data()
+                );
+                break;
+        }
+        
+        return $data;
+    }
+
+    private static function generate_brainwave_data() {
+        $data = array();
+        
+        foreach (self::$frequency_ranges as $key => $range) {
+            if ($key !== 'solfeggio') {
+                $data[$key] = array(
+                    'amplitude' => rand(70, 100),
+                    'coherence' => rand(75, 100),
+                    'dominant_frequency' => rand($range['min'] * 100, $range['max'] * 100) / 100
+                );
+            }
+        }
+        
+        return $data;
+    }
+
+    private static function generate_solfeggio_data() {
+        $data = array();
+        
+        foreach (self::$frequency_ranges['solfeggio']['frequencies'] as $freq => $desc) {
+            $data[$freq] = array(
+                'resonance' => rand(75, 100),
+                'harmony' => rand(80, 100),
+                'intensity' => rand(70, 100)
+            );
+        }
+        
+        return $data;
+    }
+
+    private static function generate_chakra_frequency_data() {
+        return TherapistsChakraAnalysis::generate_chakra_analysis();
+    }
+
+    private static function process_report_results($data, $type) {
+        $timestamp = current_time('mysql');
+        $overall_harmony = 0;
+        $recommendations = array();
+        
+        // Processar dados específicos do tipo de relatório
+        switch ($type) {
+            case 'brainwave':
+                $results = self::process_brainwave_results($data);
+                break;
+            case 'solfeggio':
+                $results = self::process_solfeggio_results($data);
+                break;
+            case 'chakra':
+                $results = self::process_chakra_frequency_results($data);
+                break;
+            case 'comprehensive':
+                $results = array(
+                    'brainwave' => self::process_brainwave_results($data['brainwave']),
+                    'solfeggio' => self::process_solfeggio_results($data['solfeggio']),
+                    'chakra' => self::process_chakra_frequency_results($data['chakra'])
+                );
+                break;
+        }
+        
+        return array(
+            'timestamp' => $timestamp,
+            'type' => $type,
+            'results' => $results,
+            'overall_harmony' => $overall_harmony,
+            'recommendations' => $recommendations
+        );
+    }
+
+    private static function save_report_results($patient_id, $results) {
+        return TherapistsDatabase::insert('frequency_reports', array(
+            'patient_id' => $patient_id,
+            'report_date' => $results['timestamp'],
+            'report_type' => $results['type'],
+            'report_data' => json_encode($results['results']),
+            'overall_harmony' => $results['overall_harmony']
+        ));
+    }
+
+    // AJAX Handlers
+    public static function register_ajax_handlers() {
+        add_action('wp_ajax_generate_frequency_report', array(__CLASS__, 'ajax_generate_report'));
+        add_action('wp_ajax_get_frequency_history', array(__CLASS__, 'ajax_get_report_history'));
+        add_action('wp_ajax_export_frequency_report', array(__CLASS__, 'ajax_export_report'));
+    }
+
+    public static function ajax_generate_report() {
+        check_ajax_referer('frequency_report_nonce', 'nonce');
+        
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error('Permissão negada');
+        }
+        
+        $patient_id = isset($_POST['patient_id']) ? intval($_POST['patient_id']) : 0;
+        $type = isset($_POST['type']) ? sanitize_text_field($_POST['type']) : 'comprehensive';
+        
+        $result = self::generate_report($patient_id, $type);
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+        
+        wp_send_json_success($result);
+    }
+
+    public static function ajax_get_report_history() {
+        check_ajax_referer('frequency_report_nonce', 'nonce');
+        
+        $patient_id = isset($_POST['patient_id']) ? intval($_POST['patient_id']) : 0;
+        
+        if (!$patient_id) {
+            wp_send_json_error('ID do paciente inválido');
+        }
+        
+        $history = TherapistsDatabase::get_results(
+            'frequency_reports',
+            "SELECT * FROM {$GLOBALS['wpdb']->prefix}frequency_reports 
+             WHERE patient_id = %d ORDER BY report_date DESC",
+            array($patient_id)
+        );
+        
+        wp_send_json_success($history);
+    }
+
+    public static function ajax_export_report() {
+        check_ajax_referer('frequency_report_nonce', 'nonce');
+        
+        $report_id = isset($_POST['report_id']) ? intval($_POST['report_id']) : 0;
+        
+        if (!$report_id) {
+            wp_send_json_error('ID do relatório inválido');
+        }
+        
+        // Implementar geração de PDF aqui
+        $pdf_url = self::generate_pdf_report($report_id);
+        
+        if (is_wp_error($pdf_url)) {
+            wp_send_json_error($pdf_url->get_error_message());
+        }
+        
+        wp_send_json_success(array('pdf_url' => $pdf_url));
+    }
+
+    private static function generate_pdf_report($report_id) {
+        // Implementar geração real de PDF aqui
+        // Por enquanto, retorna URL fictícia
+        return THERAPISTS_PLUGIN_URL . 'reports/frequency-' . $report_id . '.pdf';
+    }
+}
+
+// Inicializar handlers AJAX
+add_action('init', array('TherapistsFrequencyReport', 'register_ajax_handlers'));
+
+<?php
+class TherapistsSettings {
+    private static $option_name = 'therapists_addons_settings';
+    
+    private static $default_settings = array(
+        'analysis_types' => array('basic', 'advanced', 'complete'),
+        'frequency_ranges' => true,
+        'chakra_analysis' => true,
+        'pdf_reports' => true,
+        'email_notifications' => false,
+        'auto_backup' => false,
+        'license_key' => '',
+        'api_endpoint' => '',
+        'quantum_sensitivity' => 75,
+        'measurement_interval' => 30
+    );
+
+    public static function init() {
+        add_action('admin_menu', array(__CLASS__, 'add_settings_page'));
+        add_action('admin_init', array(__CLASS__, 'register_settings'));
+    }
+
+    public static function add_settings_page() {
+        add_submenu_page(
+            'therapists-dashboard',
+            'Configurações 5D Therapists',
+            'Configurações',
+            'manage_options',
+            'therapists-settings',
+            array(__CLASS__, 'render_settings_page')
+        );
+    }
+
+    public static function register_settings() {
+        register_setting(
+            'therapists_addons_settings',
+            self::$option_name,
+            array(__CLASS__, 'sanitize_settings')
+        );
+
+        add_settings_section(
+            'therapists_general_settings',
+            'Configurações Gerais',
+            array(__CLASS__, 'render_section_description'),
+            'therapists-settings'
+        );
+
+        // Adicionar campos
+        self::add_settings_fields();
+    }
+
+    private static function add_settings_fields() {
+        $fields = array(
+            'analysis_types' => 'Tipos de Análise Habilitados',
+            'frequency_ranges' => 'Habilitar Análise de Frequências',
+            'chakra_analysis' => 'Habilitar Análise de Chakras',
+            'pdf_reports' => 'Habilitar Relatórios PDF',
+            'quantum_sensitivity' => 'Sensibilidade Quântica (%)',
+            'measurement_interval' => 'Intervalo de Medição (segundos)'
+        );
+
+        foreach ($fields as $id => $label) {
+            add_settings_field(
+                $id,
+                $label,
+                array(__CLASS__, 'render_field'),
+                'therapists-settings',
+                'therapists_general_settings',
+                array('field' => $id)
+            );
+        }
+    }
+
+    public static function render_settings_page() {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+        ?>
+        <div class="wrap">
+            <h1>Configurações 5D Therapists</h1>
+            <form action="options.php" method="post">
+                <?php
+                settings_fields('therapists_addons_settings');
+                do_settings_sections('therapists-settings');
+                submit_button('Salvar Configurações');
+                ?>
+            </form>
+        </div>
+        <?php
+    }
+
+    public static function render_field($args) {
+        $settings = get_option(self::$option_name, self::$default_settings);
+        $field = $args['field'];
+        $value = isset($settings[$field]) ? $settings[$field] : '';
+
+        switch ($field) {
+            case 'analysis_types':
+                self::render_multicheck_field($value);
+                break;
+            case 'frequency_ranges':
+            case 'chakra_analysis':
+            case 'pdf_reports':
+                self::render_checkbox_field($field, $value);
+                break;
+            case 'quantum_sensitivity':
+            case 'measurement_interval':
+                self::render_number_field($field, $value);
+                break;
+            default:
+                self::render_text_field($field, $value);
+        }
+    }
+
+    private static function render_multicheck_field($selected) {
+        $options = array(
+            'basic' => 'Análise Básica',
+            'advanced' => 'Análise Avançada',
+            'complete' => 'Análise Completa'
+        );
+
+        foreach ($options as $value => $label) {
+            $checked = in_array($value, (array)$selected) ? 'checked' : '';
+            printf(
+                '<label><input type="checkbox" name="%s[analysis_types][]" value="%s" %s> %s</label><br>',
+                self::$option_name,
+                esc_attr($value),
+                $checked,
+                esc_html($label)
+            );
+        }
+    }
+
+    private static function render_checkbox_field($field, $value) {
+        printf(
+            '<input type="checkbox" name="%s[%s]" %s>',
+            self::$option_name,
+            esc_attr($field),
+            checked($value, true, false)
+        );
+    }
+
+    private static function render_number_field($field, $value) {
+        printf(
+            '<input type="number" name="%s[%s]" value="%s" class="small-text">',
+            self::$option_name,
+            esc_attr($field),
+            esc_attr($value)
+        );
+    }
+
+    private static function render_text_field($field, $value) {
+        printf(
+            '<input type="text" name="%s[%s]" value="%s" class="regular-text">',
+            self::$option_name,
+            esc_attr($field),
+            esc_attr($value)
+        );
+    }
+
+    public static function get_setting($key) {
+        $settings = get_option(self::$option_name, self::$default_settings);
+        return isset($settings[$key]) ? $settings[$key] : null;
+    }
+
+    public static function sanitize_settings($input) {
+        $sanitized = array();
+        
+        foreach ($input as $key => $value) {
+            switch ($key) {
+                case 'analysis_types':
+                    $sanitized[$key] = array_map('sanitize_text_field', (array)$value);
+                    break;
+                case 'quantum_sensitivity':
+                    $sanitized[$key] = min(100, max(0, intval($value)));
+                    break;
+                case 'measurement_interval':
+                    $sanitized[$key] = max(1, intval($value));
+                    break;
+                default:
+                    $sanitized[$key] = sanitize_text_field($value);
+            }
+        }
+        
+        return $sanitized;
+    }
+}
+
+// Inicializar configurações
+add_action('init', array('TherapistsSettings', 'init'));
+
+/* Estilos gerais */
+.quantum-container {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+/* Visualizador quântico */
+.quantum-visualizer {
+    height: 300px;
+    position: relative;
+    background: linear-gradient(45deg, #1a2a6c, #b21f1f, #fdbb2d);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Animações quânticas */
+@keyframes quantumPulse {
+    0% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.2); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 0.5; }
+}
+
+/* Controles e botões */
+.quantum-controls {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.quantum-button {
+    background: linear-gradient(135deg, #6e8efb, #a777e3);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+/* Leituras e medições */
+.quantum-readings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .quantum-controls {
+        flex-direction: column;
+    }
+}
+
+const QuantumEffects = {
+    init() {
+        this.canvas = document.getElementById('quantumCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.bindEvents();
+        this.initializeVisualizer();
+        this.startAnimation();
+    },
+
+    bindEvents() {
+        document.getElementById('startAnalysis')?.addEventListener('click', 
+            () => this.startAnalysis());
+        
+        document.getElementById('saveResults')?.addEventListener('click', 
+            () => this.saveResults());
+    },
+
+    initializeVisualizer() {
+        this.resizeCanvas();
+        window.addEventListener('resize', () => this.resizeCanvas());
+    },
+
+    resizeCanvas() {
+        const container = this.canvas.parentElement;
+        this.canvas.width = container.clientWidth;
+        this.canvas.height = container.clientHeight;
+    },
+
+    startAnimation() {
+        this.animationFrame = requestAnimationFrame(() => this.animate());
+    },
+
+    animate() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.drawQuantumEffects();
+        this.animationFrame = requestAnimationFrame(() => this.animate());
+    },
+
+    drawQuantumEffects() {
+        // Implementar efeitos visuais quânticos aqui
+    },
+
+    async startAnalysis() {
+        try {
+            const patientId = document.getElementById('patientSelect').value;
+            if (!patientId) {
+                throw new Error('Selecione um paciente');
+            }
+
+            const response = await this.performAnalysis(patientId);
+            this.displayResults(response.data);
+        } catch (error) {
+            this.handleError(error);
+        }
+    },
+
+    async performAnalysis(patientId) {
+        const formData = new FormData();
+        formData.append('action', 'perform_quantum_analysis');
+        formData.append('patient_id', patientId);
+        formData.append('nonce', quantumAnalysis.nonce);
+
+        const response = await fetch(quantumAnalysis.ajaxurl, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error('Erro na análise');
+        }
+
+        return await response.json();
+    },
+
+    displayResults(results) {
+        // Implementar exibição dos resultados
+    },
+
+    handleError(error) {
+        console.error(error);
+        alert(error.message || 'Erro ao realizar análise');
+    }
+};
+
+// Inicializar quando o DOM estiver pronto
+document.addEventListener('DOMContentLoaded', () => QuantumEffects.init());
+
+<div class="wrap">
+    <h1>Dashboard 5D Therapists</h1>
+    
+    <div class="dashboard-grid">
+        <!-- Estatísticas Rápidas -->
+        <div class="dashboard-card">
+            <h2>Estatísticas</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value"><?php echo esc_html(self::get_total_patients()); ?></span>
+                    <span class="stat-label">Pacientes</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value"><?php echo esc_html(self::get_total_analyses()); ?></span>
+                    <span class="stat-label">Análises</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value"><?php echo esc_html(self::get_average_frequency()); ?> Hz</span>
+                    <span class="stat-label">Média de Frequência</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ações Rápidas -->
+        <div class="dashboard-card">
+            <h2>Ações Rápidas</h2>
+            <div class="quick-actions">
+                <a href="<?php echo esc_url(admin_url('admin.php?page=new-patient')); ?>" class="button">
+                    Novo Paciente
+                </a>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=new-analysis')); ?>" class="button">
+                    Nova Análise
+                </a>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=reports')); ?>" class="button">
+                    Relatórios
+                </a>
+            </div>
+        </div>
+
+        <!-- Análises Recentes -->
+        <div class="dashboard-card full-width">
+            <h2>Análises Recentes</h2>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Paciente</th>
+                        <th>Tipo</th>
+                        <th>Data</th>
+                        <th>Resultado</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php self::render_recent_analyses(); ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
