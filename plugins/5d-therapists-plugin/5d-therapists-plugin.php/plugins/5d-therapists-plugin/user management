@@ -1,0 +1,366 @@
+<?php
+/*
+Plugin Name: 5D Therapists User Management
+Description: Plugin para gerenciar terapeutas e pacientes no app 5D Therapists, incluindo cadastro de terapeutas e gerenciamento de perfis de pacientes.
+Version: 1.4
+Author: Mestre Ricardo
+*/
+
+// Evitar acesso direto
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Função para criar tabelas de terapeutas e pacientes no banco de dados
+function therapists_create_tables() {
+    global $wpdb;
+    $charset_collate = $wpdb->get_charset_collate();
+
+    // Tabela de terapeutas
+    $table_name_therapists = $wpdb->prefix . 'therapists';
+    $sql_therapists = "CREATE TABLE $table_name_therapists (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        name varchar(255) NOT NULL,
+        email varchar(255) NOT NULL,
+        password varchar(255) NOT NULL,
+        PRIMARY KEY  (id)
+    ) $charset_collate;";
+
+    // Tabela de pacientes
+    $table_name_patients = $wpdb->prefix . 'patients';
+    $sql_patients = "CREATE TABLE $table_name_patients (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        therapist_id mediumint(9) NOT NULL,
+        name varchar(255) NOT NULL,
+        email varchar(255) NOT NULL,
+        date_of_birth date NOT NULL,
+        notes text,
+        PRIMARY KEY  (id),
+        FOREIGN KEY (therapist_id) REFERENCES $table_name_therapists(id) ON DELETE CASCADE
+    ) $charset_collate;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql_therapists);
+    dbDelta($sql_patients);
+}
+register_activation_hook(__FILE__, 'therapists_create_tables');
+
+// Shortcode para cadastro de terapeutas
+function therapists_register_therapist_form_shortcode() {
+    ob_start();
+    ?>
+    <div id="therapist-register-container" class="register-container">
+        <div class="register-box">
+            <h2>Cadastro de Terapeuta - 5D Therapists</h2>
+            <input type="text" id="therapist-register-name" placeholder="Nome">
+            <input type="email" id="therapist-register-email" placeholder="Email">
+            <input type="password" id="therapist-register-password" placeholder="Senha">
+            <input type="password" id="therapist-register-confirm-password" placeholder="Confirme a Senha">
+            <button onclick="therapistRegister()">Cadastrar</button>
+        </div>
+    </div>
+    <script>
+        function therapistRegister() {
+            var name = document.getElementById("therapist-register-name").value;
+            var email = document.getElementById("therapist-register-email").value;
+            var password = document.getElementById("therapist-register-password").value;
+            var confirmPassword = document.getElementById("therapist-register-confirm-password").value;
+            if (password === confirmPassword) {
+                var data = {
+                    'action': 'therapists_register_therapist',
+                    'name': name,
+                    'email': email,
+                    'password': password
+                };
+                jQuery.post(ajaxurl, data, function(response) {
+                    alert(response.data);
+                    if (response.success) {
+                        document.getElementById("therapist-register-name").value = "";
+                        document.getElementById("therapist-register-email").value = "";
+                        document.getElementById("therapist-register-password").value = "";
+                        document.getElementById("therapist-register-confirm-password").value = "";
+                    }
+                });
+            } else {
+                alert("As senhas não correspondem. Por favor, tente novamente.");
+            }
+        }
+    </script>
+    <style>
+        #therapist-register-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: var(--register-bg-gradient, linear-gradient(to right, #00c9fe, #4facfe));
+        }
+        .register-box {
+            background: var(--register-box-bg, #fff);
+            padding: 2em;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 300px;
+        }
+        .register-box h2 {
+            margin-bottom: 1.5em;
+            color: var(--register-heading-color, #333);
+        }
+        .register-box input {
+            width: 100%;
+            padding: 0.8em;
+            margin-bottom: 1em;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        .register-box button {
+            background: var(--register-button-bg, #4facfe);
+            color: var(--register-button-color, white);
+            padding: 0.8em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .register-box button:hover {
+            background: var(--register-button-hover-bg, #00c9fe);
+        }
+    </style>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('therapists_register_therapist', 'therapists_register_therapist_form_shortcode');
+
+// Função AJAX para salvar terapeuta
+function therapists_register_therapist() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'therapists';
+
+    $name = sanitize_text_field($_POST['name']);
+    $email = sanitize_email($_POST['email']);
+    $password = sanitize_text_field($_POST['password']);
+    $hashed_password = wp_hash_password($password);
+
+    $wpdb->insert(
+        $table_name,
+        array(
+            'name' => $name,
+            'email' => $email,
+            'password' => $hashed_password
+        )
+    );
+
+    wp_send_json_success('Cadastro de terapeuta realizado com sucesso!');
+}
+add_action('wp_ajax_therapists_register_therapist', 'therapists_register_therapist');
+add_action('wp_ajax_nopriv_therapists_register_therapist', 'therapists_register_therapist');
+
+// Shortcode para cadastro de pacientes
+function therapists_register_patient_form_shortcode() {
+    ob_start();
+    ?>
+    <div id="patient-register-container" class="register-container">
+        <div class="register-box">
+            <h2>Cadastro de Paciente - 5D Therapists</h2>
+            <input type="text" id="patient-register-name" placeholder="Nome">
+            <input type="email" id="patient-register-email" placeholder="Email">
+            <input type="date" id="patient-register-dob" placeholder="Data de Nascimento">
+            <button onclick="patientRegister()">Cadastrar</button>
+        </div>
+    </div>
+    <script>
+        function patientRegister() {
+            var name = document.getElementById("patient-register-name").value;
+            var email = document.getElementById("patient-register-email").value;
+            var dob = document.getElementById("patient-register-dob").value;
+            var data = {
+                'action': 'therapists_register_patient',
+                'name': name,
+                'email': email,
+                'date_of_birth': dob
+            };
+            jQuery.post(ajaxurl, data, function(response) {
+                alert(response.data);
+                if (response.success) {
+                    document.getElementById("patient-register-name").value = "";
+                    document.getElementById("patient-register-email").value = "";
+                    document.getElementById("patient-register-dob").value = "";
+                }
+            });
+        }
+    </script>
+    <style>
+        #patient-register-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: var(--register-bg-gradient, linear-gradient(to right, #00c9fe, #4facfe));
+        }
+        .register-box {
+            background: var(--register-box-bg, #fff);
+            padding: 2em;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 300px;
+        }
+        .register-box h2 {
+            margin-bottom: 1.5em;
+            color: var(--register-heading-color, #333);
+        }
+        .register-box input {
+            width: 100%;
+            padding: 0.8em;
+            margin-bottom: 1em;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        .register-box button {
+            background: var(--register-button-bg, #4facfe);
+            color: var(--register-button-color, white);
+            padding: 0.8em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .register-box button:hover {
+            background: var(--register-button-hover-bg, #00c9fe);
+        }
+    </style>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('therapists_register_patient', 'therapists_register_patient_form_shortcode');
+
+// Função AJAX para salvar paciente
+function therapists_register_patient() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'patients';
+
+    $therapist_id = get_current_user_id();
+    $name = sanitize_text_field($_POST['name']);
+    $email = sanitize_email($_POST['email']);
+    $date_of_birth = sanitize_text_field($_POST['date_of_birth']);
+
+    $wpdb->insert(
+        $table_name,
+        array(
+            'therapist_id' => $therapist_id,
+            'name' => $name,
+            'email' => $email,
+            'date_of_birth' => $date_of_birth
+        )
+    );
+
+    wp_send_json_success('Cadastro de paciente realizado com sucesso!');
+}
+add_action('wp_ajax_therapists_register_patient', 'therapists_register_patient');
+add_action('wp_ajax_nopriv_therapists_register_patient', 'therapists_register_patient');
+
+// Shortcode para gerenciamento de pacientes
+function therapists_manage_patients_shortcode() {
+    global $wpdb;
+    $therapist_id = get_current_user_id();
+    $table_name = $wpdb->prefix . 'patients';
+    $patients = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE therapist_id = %d", $therapist_id));
+
+    ob_start();
+    ?>
+    <div id="manage-patients-container" class="manage-patients-container">
+        <h2>Gerenciamento de Pacientes - 5D Therapists</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Nome do Paciente</th>
+                    <th>Email</th>
+                    <th>Data de Nascimento</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($patients as $patient) : ?>
+                    <tr>
+                        <td><?php echo esc_html($patient->name); ?></td>
+                        <td><?php echo esc_html($patient->email); ?></td>
+                        <td><?php echo esc_html($patient->date_of_birth); ?></td>
+                        <td>
+                            <button onclick="deletePatient(<?php echo $patient->id; ?>)">Excluir</button>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <script>
+        function deletePatient(id) {
+            if (confirm('Tem certeza que deseja excluir este paciente?')) {
+                var data = {
+                    'action': 'therapists_delete_patient',
+                    'id': id
+                };
+                jQuery.post(ajaxurl, data, function(response) {
+                    alert(response.data);
+                    if (response.success) {
+                        location.reload();
+                    }
+                });
+            }
+        }
+    </script>
+    <style>
+        #manage-patients-container {
+            max-width: 800px;
+            margin: 2em auto;
+            padding: 2em;
+            box-sizing: border-box;
+            background: var(--manage-bg, #fff);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 1em;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background: var(--table-heading-bg, #4facfe);
+            color: var(--table-heading-color, white);
+        }
+        button {
+            background: var(--button-bg, #4facfe);
+            color: var(--button-color, white);
+            padding: 0.5em 1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-right: 0.5em;
+        }
+        button:hover {
+            background: var(--button-hover-bg, #00c9fe);
+        }
+    </style>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('therapists_manage_patients', 'therapists_manage_patients_shortcode');
+
+// Função AJAX para excluir paciente
+function therapists_delete_patient() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'patients';
+    $id = intval($_POST['id']);
+
+    $wpdb->delete($table_name, array('id' => $id));
+
+    wp_send_json_success('Paciente excluído com sucesso!');
+}
+add_action('wp_ajax_therapists_delete_patient', 'therapists_delete_patient');
+?>
