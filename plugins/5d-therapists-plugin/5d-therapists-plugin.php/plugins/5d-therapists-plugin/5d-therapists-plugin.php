@@ -535,3 +535,9 @@ function therapists_addons_page() {
 }
 
 ?>
+// Função de exemplo para análise do Korbit
+function testarKorbitAI() {
+    $mensagem = "Korbit, analise esta função!";
+    echo $mensagem;
+}
+
