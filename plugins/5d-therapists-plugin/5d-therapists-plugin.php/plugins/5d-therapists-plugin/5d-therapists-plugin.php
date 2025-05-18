@@ -537,7 +537,21 @@ function therapists_addons_page() {
 ?>
 // Função de exemplo para análise do Korbit
 function testarKorbitAI() {
-    $mensagem = "Korbit, analise esta função!";
-    echo $mensagem;
+   function testarKorbitAI() {
+    $resultado = [
+        'status' => '✅ Sucesso',
+        'análise' => 'Nenhum bloqueio energético detectado.',
+        'tempo' => '⏱️ 0.42s',
+        'intensidade_quântica' => '💫 97.2%'
+    ];
+
+    echo '<div style="padding:20px; background:#e8f5e9; border-left: 5px solid #43a047;">';
+    echo '<h3>🧬 Resultado da Análise Korbit AI</h3>';
+    echo '<ul>';
+    foreach ($resultado as $chave => $valor) {
+        echo '<li><strong>' . ucfirst($chave) . ':</strong> ' . $valor . '</li>';
+    }
+    echo '</ul>';
+    echo '</div>';
 }
 
