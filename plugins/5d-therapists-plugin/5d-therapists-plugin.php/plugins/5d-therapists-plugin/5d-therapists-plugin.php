@@ -540,4 +540,37 @@ function testarKorbitAI() {
     $mensagem = "Korbit, analise esta função!";
     echo $mensagem;
 }
+// Adiciona submenu para teste Korbit AI no admin
+add_action('admin_menu', function () {
+    add_submenu_page(
+        'tools.php',
+        'Teste Korbit AI',
+        'Teste Korbit AI',
+        'manage_options',
+        'testar-korbit-ai',
+        'render_korbit_test_page'
+    );
+});
+
+// Página de teste com botão para executá-la
+function render_korbit_test_page() {
+    ?>
+    <div class="wrap">
+        <h1>Testar Análise com Korbit AI</h1>
+        <p>Executa uma função de análise integrada com o Korbit AI.</p>
+
+        <form method="post">
+            <?php submit_button('Testar Análise Korbit AI'); ?>
+        </form>
+
+        <?php
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            echo '<div style="margin-top:20px;"><strong>Resultado:</strong><br>';
+            testarKorbitAI();
+            echo '</div>';
+        }
+        ?>
+    </div>
+    <?php
+}
 
