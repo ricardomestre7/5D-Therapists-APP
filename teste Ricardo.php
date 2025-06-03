@@ -947,52 +947,17 @@ function enqueue_quantum_effects() {
 }
 add_action('wp_enqueue_scripts', 'enqueue_quantum_effects');
 
-// Função para renderizar o shortcode
-function quantum_anamnesis_shortcode() {
-    ob_start(); // Inicia o buffer de saída
-    ?>
-    <div class="quantum-anamnesis-container">
-        <h2>Formulário de Anamnese Quântica</h2>
-        <form id="quantum-anamnesis-form">
-            <label for="patient_name">Nome do Paciente:</label><br><br>
-            <input type="text" id="patient_name" name="patient_name" required><br><br>
-
-            <label for="birth_date">Data de Nascimento:</label>
-            <input type="date" id="birth_date" name="birth_date"><br><br>
-
-            <label for="energetic_block">Você sente algum bloqueio energético?</label>
-            <select id="energetic_block" name="energetic_block">
-                <option value="sim">Sim</option>
-                <option value="nao">Não</option>
-            </select><br><br>
-
-            <!-- Mais perguntas podem ser adicionadas aqui -->
-
-            <button type="button" onclick="enviarAnamnese()">Enviar Anamnese</button>
-        </form>
-    </div>
-    <script>
-        function enviarAnamnese() {
-            alert("Anamnese enviada com sucesso!");
-			
-        // Carrega o arquivo CSS do shortcode
 function quantum_anamnesis_enqueue_styles() {
-
-    );
-}
-
     wp_enqueue_style(
-        'quantum-anamnesis-css', // Nome único para o estilo
-        plugin_dir_url(__FILE__) . 'assets/css/quantum-anamnesis.css', // Caminho para o arquivo CSS
-        array(), // Dependências (nenhuma aqui)
-        '1.0', // Versão do CSS
-        'all' // Mídias suportadas (all = todas)
+        'quantum-anamnesis-css',
+        plugin_dir_url(__FILE__) . 'assets/css/quantum-anamnesis.css',
+        array(),
+        '1.0',
+        'all'
     );
 }
-// Enfileira o CSS no frontend do WordPress
 add_action('wp_enqueue_scripts', 'quantum_anamnesis_enqueue_styles');
 
-// Função para renderizar o shortcode
 function quantum_anamnesis_shortcode() {
     ob_start();
     ?>
@@ -1015,12 +980,13 @@ function quantum_anamnesis_shortcode() {
             <button type="button" onclick="enviarAnamnese()">Enviar Anamnese</button>
         </form>
     </div>
+    <script>
+    function enviarAnamnese() {
+        alert('Anamnese enviada com sucesso!');
+    }
+    </script>
+    <?php
     return ob_get_clean();
 }
 add_shortcode('quantum_anamnesis', 'quantum_anamnesis_shortcode');
-
-</script>
-    <?php
-}
-
 ?>
